@@ -27,10 +27,19 @@ def format_attempt(attempt):
     title = attempt["lesson_title"] or "Без названия"
     url = attempt.get("lesson_url", "")
 
-    text = f"Преподаватель проверил работу!\n\n{status}\n\n{title}"
     if url:
-        text += f"\n{url}"
-    return text
+        return (
+            f"Преподаватель проверил работу!\n\n"
+            f"{status}\n\n"
+            f"{title}\n"
+            f"{url}"
+        )
+
+    return (
+        f"Преподаватель проверил работу!\n\n"
+        f"{status}\n\n"
+        f"{title}"
+    )
 
 
 async def notify(bot, chat_id, event):
