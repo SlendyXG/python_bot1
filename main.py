@@ -1,10 +1,13 @@
 import asyncio
+import logging
 import os
 import time
 
 import requests
 import telegram
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 
 def get_last_timestamp(token):
@@ -34,7 +37,6 @@ def format_attempt(attempt):
             f"{title}\n"
             f"{url}"
         )
-
     return (
         f"Преподаватель проверил работу!\n\n"
         f"{status}\n\n"
@@ -66,8 +68,8 @@ async def long_poll(token, bot, chat_id, last_timestamp):
             response.raise_for_status()
         except requests.exceptions.ReadTimeout:
             continue
-        except requests.exceptions.ConnectionError as e:
-            print(f"Ошибка соединения: {e}")
+        except requests.exceptions.ConnectionError:
+            logger.warning("Нет соединения, повторяю через 5 секунд")
             time.sleep(5)
             continue
 
@@ -85,13 +87,18 @@ async def long_poll(token, bot, chat_id, last_timestamp):
 
 
 async def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
     load_dotenv()
     token = os.environ["DEVMAN_TOKEN"]
     bot = telegram.Bot(token=os.environ["TELEGRAM_BOT_TOKEN"])
     chat_id = os.environ["TELEGRAM_CHAT_ID"]
 
     last_timestamp = get_last_timestamp(token)
-    print(f"Стартуем с timestamp = {last_timestamp}")
+    logger.info("Стартуем с timestamp = %s", last_timestamp)
 
     await long_poll(token, bot, chat_id, last_timestamp)
 
