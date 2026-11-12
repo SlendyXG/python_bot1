@@ -12,10 +12,10 @@ def get_last_timestamp(token):
     headers = {"Authorization": f"Token {token}"}
     response = requests.get(url, headers=headers)
     response.raise_for_status()
-    data = response.json()
-    if not data["results"]:
+    reviews = response.json()
+    if not reviews["results"]:
         return time.time()
-    return max(r["timestamp"] for r in data["results"])
+    return max(review["timestamp"] for review in reviews["results"])
 
 
 def format_attempt(attempt):
@@ -33,8 +33,8 @@ def format_attempt(attempt):
     return text
 
 
-async def notify(bot, chat_id, data):
-    for attempt in data["new_attempts"]:
+async def notify(bot, chat_id, event):
+    for attempt in event["new_attempts"]:
         await bot.send_message(
             chat_id=chat_id,
             text=format_attempt(attempt),
@@ -62,16 +62,16 @@ async def long_poll(token, bot, chat_id, last_timestamp):
             time.sleep(5)
             continue
 
-        data = response.json()
+        event = response.json()
 
-        if data["status"] == "timeout":
+        if event["status"] == "timeout":
             continue
 
-        if data["status"] == "found":
-            await notify(bot, chat_id, data)
+        if event["status"] == "found":
+            await notify(bot, chat_id, event)
             last_timestamp = max(
-                data["last_attempt_timestamp"],
-                max(a["timestamp"] for a in data["new_attempts"]),
+                event["last_attempt_timestamp"],
+                max(attempt["timestamp"] for attempt in event["new_attempts"]),
             )
 
 
@@ -82,6 +82,7 @@ async def main():
     chat_id = os.environ["TELEGRAM_CHAT_ID"]
 
     last_timestamp = get_last_timestamp(token)
+    print(f"Стартуем с timestamp = {last_timestamp}")
 
     await long_poll(token, bot, chat_id, last_timestamp)
 
