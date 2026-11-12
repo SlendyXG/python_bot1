@@ -3,19 +3,19 @@ import logging
 import os
 import time
 
-import requests
+import aiohttp
 import telegram
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
 
-def get_last_timestamp(token):
+async def get_last_timestamp(session, token):
     url = "https://dvmn.org/api/user_reviews"
     headers = {"Authorization": f"Token {token}"}
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
-    reviews = response.json()
+    async with session.get(url, headers=headers) as response:
+        response.raise_for_status()
+        reviews = await response.json()
     if not reviews["results"]:
         return time.time()
     return max(review["timestamp"] for review in reviews["results"])
@@ -53,27 +53,26 @@ async def notify(bot, chat_id, event):
         )
 
 
-async def long_poll(token, bot, chat_id, last_timestamp):
+async def long_poll(session, token, bot, chat_id, last_timestamp):
     url = "https://dvmn.org/api/long_polling/"
     headers = {"Authorization": f"Token {token}"}
 
     while True:
         try:
-            response = requests.get(
+            async with session.get(
                 url,
                 headers=headers,
                 params={"timestamp": last_timestamp},
-                timeout=(10, 90),
-            )
-            response.raise_for_status()
-        except requests.exceptions.ReadTimeout:
+                timeout=aiohttp.ClientTimeout(total=None, sock_read=90, sock_connect=10),
+            ) as response:
+                response.raise_for_status()
+                event = await response.json()
+        except asyncio.TimeoutError:
             continue
-        except requests.exceptions.ConnectionError:
+        except aiohttp.ClientConnectionError:
             logger.warning("Нет соединения, повторяю через 5 секунд")
-            time.sleep(5)
+            await asyncio.sleep(5)
             continue
-
-        event = response.json()
 
         if event["status"] == "timeout":
             continue
@@ -91,16 +90,16 @@ async def main():
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-
     load_dotenv()
     token = os.environ["DEVMAN_TOKEN"]
     bot = telegram.Bot(token=os.environ["TELEGRAM_BOT_TOKEN"])
     chat_id = os.environ["TELEGRAM_CHAT_ID"]
 
-    last_timestamp = get_last_timestamp(token)
-    logger.info("Стартуем с timestamp = %s", last_timestamp)
+    async with aiohttp.ClientSession() as session:
+        last_timestamp = await get_last_timestamp(session, token)
+        logger.info("Стартуем с timestamp = %s", last_timestamp)
 
-    await long_poll(token, bot, chat_id, last_timestamp)
+        await long_poll(session, token, bot, chat_id, last_timestamp)
 
 
 if __name__ == "__main__":
